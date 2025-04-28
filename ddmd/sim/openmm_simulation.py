@@ -2,14 +2,18 @@ import os
 import json
 import parmed as pmd
 
-try:
-    import simtk.openmm as omm
-    import simtk.openmm.app as app
-    import simtk.unit as u
-except:
-    import openmm as omm
-    import openmm.app as app
-    import openmm.unit as u
+# try:
+#     import simtk.openmm as omm
+#     import simtk.openmm.app as app
+#     import simtk.unit as u
+# except:
+#     import openmm as omm
+#     import openmm.app as app
+#     import openmm.unit as u
+
+import openmm as omm
+import openmm.app as app
+import openmm.unit as u
 
 # from .openmm_reporter import ContactMapReporter
 from ddmd.utils import build_logger, touch_file, write_pdb_frame
