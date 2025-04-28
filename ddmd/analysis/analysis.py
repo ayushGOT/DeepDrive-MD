@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from sklearn.cluster import MiniBatchKMeans
+from sklearn.cluster import MiniBatchKMeans, KMeans
 
 from ddmd.inference2 import inference_run
 from ddmd.utils import get_dir_base
@@ -11,7 +11,7 @@ class analysis_run(inference_run):
     def __init__(self, pdb_file, md_path, ml_path) -> None:
         super().__init__(pdb_file, md_path, ml_path)
     
-    def run(self, n_clusters=500, random_state=42, init='k-means++', md_form='done', **kwargs): 
+    def run(self, n_clusters=300, random_state=42, init='k-means++', md_form='done', **kwargs): 
         # base analysis from infer
         df = self.build_md_df(form=md_form, **kwargs)
         df['sys_label'] = [get_dir_base(i) for i in df['dcd']]
@@ -50,9 +50,13 @@ class analysis_run(inference_run):
 def kmeans_emb_clustering(
     embeddings, n_clusters=500, 
     random_state=42, init='k-means++'): 
-    kmeans = MiniBatchKMeans(
+    # kmeans = MiniBatchKMeans(
+    #         n_clusters=n_clusters, 
+    #         init=init, random_state=random_state
+    #     ).fit(embeddings)
+    kmeans = KMeans(
             n_clusters=n_clusters, 
-            init=init, random_state=random_state
+            init=init, random_state=random_state, n_init= 10
         ).fit(embeddings)
     return kmeans.labels_
 
