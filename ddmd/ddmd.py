@@ -20,6 +20,8 @@ class ddmd_run(object):
     
     md_only : ``bool``
         Whether to run ml and infer
+    run_ml : ``bool``
+        Whether to run ml --> run sims with infer
     """
     def __init__(self, cfg_yml) -> None:
         self.cfg_yml = os.path.abspath(cfg_yml)
@@ -27,6 +29,7 @@ class ddmd_run(object):
         self.ddmd_setup = dict_from_yaml(self.cfg_yml)
         
         self.md_only = self.ddmd_setup['md_only'] if 'md_only' in self.ddmd_setup else False
+        self.run_ml = self.ddmd_setup['run_ml'] if 'run_ml' in self.ddmd_setup else True  # whether to run ML
         work_dir = self.ddmd_setup['output_dir']
         cont_run =self.ddmd_setup['continue'] if 'continue' in self.ddmd_setup else False
         if os.path.exists(work_dir):
@@ -53,6 +56,9 @@ class ddmd_run(object):
         if self.md_only: 
             n_runs = self.n_sims 
             logger.info(f"Running only {self.n_sims} simulations...")
+        elif !self.run_ml:               # run inference driven simulations with a pretrained CVAE
+            n_runs = self.n_sims + 1 
+            logger.info(f"Running inference driven {self.n_sims} simulations with a pretrained CVAE...")
         else:
             n_runs = self.n_sims + 2
         self.gpu_ids = GPUManager().request(num_gpus=n_runs)
@@ -117,9 +123,14 @@ class ddmd_run(object):
         ml_setup = self.ddmd_setup['ml_setup'].copy() 
         ml_setup['pdb_file'] = md_setup['pdb_file']
         ml_setup['md_path'] = self.md_path
-        self.ml_path = create_path(dir_type='ml', time_stamp=False)
-        ml_yml = f"{self.ml_path}/ml.yml"
-        dict_to_yaml(ml_setup, ml_yml)
+        
+        if !self.run_ml:                     # run inference driven simulations with a pretrained CVAE
+            self.ml_path = ml_setup['vae_path']        # path of pretrained CVAE model
+            ml_yml = None
+        else:
+            self.ml_path = create_path(dir_type='ml', time_stamp=False)
+            ml_yml = f"{self.ml_path}/ml.yml"
+            dict_to_yaml(ml_setup, ml_yml)
 
         infer_setup = self.ddmd_setup['infer_setup']
         infer_setup['pdb_file'] = md_setup['pdb_file']
@@ -171,9 +182,10 @@ class ddmd_run(object):
         if self.md_only: 
             return runs
         # ml 
-        ml_run = self.submit_job(ml_yml, self.ml_path, n_gpus=1, 
+        if self.run_ml:
+            ml_run = self.submit_job(ml_yml, self.ml_path, n_gpus=1, 
                 job_type='ml')
-        runs.append(ml_run)
+            runs.append(ml_run)
         # infer
         infer_run = self.submit_job(infer_yml, self.infer_path, 
                 n_gpus=1, job_type='infer')
