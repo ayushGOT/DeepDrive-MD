@@ -86,7 +86,7 @@ class inference_run(ml_base):
                 if map_type == "binary":
                     cm = (distances.self_distance_array(sel_cm.positions) < cm_cutoff) * 1.0
                 elif map_type == "distance":
-                    cm = distances.self_distance_array(ca.positions)
+                    cm = distances.self_distance_array(sel_cm.positions)
                     cm[cm > cm_cutoff] = 50.0                # not interested in extremely long-range interactions
                 cm_list.append(cm)
                 local_entry = {'pdb': os.path.abspath(pdb_file), 
