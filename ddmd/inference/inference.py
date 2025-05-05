@@ -69,7 +69,7 @@ class inference_run(ml_base):
         cm_sel = vae_config['atom_sel'] if 'atom_sel' in vae_config else 'name CA'   # atom selection for contact maps
         cm_cutoff = vae_config['cutoff'] if 'cutoff' in vae_config else 8
         map_type = vae_config['map_type'] if 'map_type' in vae_config else 'binary'
-        logger.info("Processing MD trajectories")
+        logger.info(f"Processing MD trajectories using {map_type} contact maps")
         cm_list = []
         for dcd in tqdm(dcd_files): 
             setup_yml = f"{os.path.dirname(dcd)}/setting.yml"
