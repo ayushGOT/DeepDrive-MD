@@ -70,6 +70,7 @@ class ml_base(yml_base):
     def get_contact_maps(
         self,
         atom_sel: str = "name CA",
+        map_type: str= "binary",
         cutoff: float = 8.0,
         dry_run: bool = False,
     ):
@@ -90,7 +91,11 @@ class ml_base(yml_base):
 
             ca = mda_u.select_atoms(atom_sel)
             for _ in mda_u.trajectory:
-                cm = (distances.self_distance_array(ca.positions) < cutoff) * 1.0
+                if map_type == "binary":
+                    cm = (distances.self_distance_array(ca.positions) < cutoff) * 1.0
+                elif map_type == "distance":
+                    cm = distances.self_distance_array(ca.positions)
+                    cm[cm > cutoff] = 50.0  # not interested in extremely long-range interactions
                 cm_list.append(cm)
 
         return np.array(cm_list)
