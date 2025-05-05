@@ -56,7 +56,7 @@ class ddmd_run(object):
         if self.md_only: 
             n_runs = self.n_sims 
             logger.info(f"Running only {self.n_sims} simulations...")
-        elif !self.run_ml:               # run inference driven simulations with a pretrained CVAE
+        elif not self.run_ml:               # run inference driven simulations with a pretrained CVAE
             n_runs = self.n_sims + 1 
             logger.info(f"Running inference driven {self.n_sims} simulations with a pretrained CVAE...")
         else:
@@ -124,7 +124,7 @@ class ddmd_run(object):
         ml_setup['pdb_file'] = md_setup['pdb_file']
         ml_setup['md_path'] = self.md_path
         
-        if !self.run_ml:                     # run inference driven simulations with a pretrained CVAE
+        if not self.run_ml:                     # run inference driven simulations with a pretrained CVAE
             self.ml_path = ml_setup['vae_path']        # path of pretrained CVAE model
             ml_yml = None
         else:
