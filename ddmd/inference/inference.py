@@ -68,6 +68,7 @@ class inference_run(ml_base):
         vae_config = self.get_cvae(dry_run=True)
         cm_sel = vae_config['atom_sel'] if 'atom_sel' in vae_config else 'name CA'   # atom selection for contact maps
         cm_cutoff = vae_config['cutoff'] if 'cutoff' in vae_config else 8
+        map_type = vae_config['map_type'] if 'map_type' in vae_config else 'binary'
         logger.info("Processing MD trajectories")
         cm_list = []
         for dcd in tqdm(dcd_files): 
@@ -81,8 +82,12 @@ class inference_run(ml_base):
 
             sel_atoms = mda_u.select_atoms(atom_sel)  # atom selection to calculate RMSD
             sel_cm = mda_u.select_atoms(cm_sel)
-            for ts in mda_u.trajectory: 
-                cm = (distances.self_distance_array(sel_cm.positions) < cm_cutoff) * 1.0
+            for ts in mda_u.trajectory:
+                if map_type == "binary":
+                    cm = (distances.self_distance_array(sel_cm.positions) < cm_cutoff) * 1.0
+                elif map_type == "distance":
+                    cm = distances.self_distance_array(ca.positions)
+                    cm[cm > cm_cutoff] = 50.0                # not interested in extremely long-range interactions
                 cm_list.append(cm)
                 local_entry = {'pdb': os.path.abspath(pdb_file), 
                             'dcd': os.path.abspath(dcd), 
