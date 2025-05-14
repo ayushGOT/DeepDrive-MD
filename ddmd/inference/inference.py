@@ -59,7 +59,7 @@ class inference_run(ml_base):
         else: 
             raise("Form not defined, using all, done or running ...")
 
-    def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', **kwargs): 
+    def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', restart_pdb=None, target=None, **kwargs): 
         dcd_files = self.get_md_runs(form=form)
         df_entry = []
         if ref_pdb: 
@@ -100,6 +100,9 @@ class inference_run(ml_base):
                 # possible new analysis
                 df_entry.append(local_entry)
                 
+        max_dist = max(max(sublist) for sublist in cm_list)
+        cm_list = [[x / max_dist for x in sublist] for sublist in cm_list]   # normalize all distances to (0,1)
+        
         df = pd.DataFrame(df_entry)
         if 'strides' in vae_config: 
             padding = self.get_padding(vae_config['strides'])
