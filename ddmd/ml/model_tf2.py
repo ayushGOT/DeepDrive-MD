@@ -256,7 +256,7 @@ class CVAE(object):
 
         # build model
         self.model = Model(self.input, self.output)
-        self.optimizer = RMSprop(lr=0.001, rho=0.9, epsilon=1e-08, decay=0.0)
+        self.optimizer = RMSprop(lr=0.0001, rho=0.9, epsilon=1e-08, decay=0.0)
         # KLD loss
         self.model.add_loss(
             -0.5
