@@ -97,7 +97,10 @@ class ml_base(yml_base):
                     cm = distances.self_distance_array(ca.positions)
                     cm[cm > cutoff] = 50.0  # not interested in extremely long-range interactions
                 cm_list.append(cm)
-
+        
+        max_dist = max(max(sublist) for sublist in cm_list)
+        cm_list = [[x / max_dist for x in sublist] for sublist in cm_list]   # normalize all distances to (0,1)
+        
         return np.array(cm_list)
 
     def get_vae_input(self, cm_list: Optional[List] = None, padding: int = 2, **kwargs):
