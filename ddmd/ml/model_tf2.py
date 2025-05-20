@@ -186,12 +186,14 @@ class CVAE(object):
             self.encode_dense.append(layer)
 
         # define embedding layer
-        self.z_mean = Dense(latent_dim)(self.encode_dense[-1])
-        self.z_log_var = Dense(latent_dim)(self.encode_dense[-1])
-        self.z = Lambda(self._sampling, output_shape=(latent_dim,))(
-            [self.z_mean, self.z_log_var]
-        )
-
+#         self.z_mean = Dense(latent_dim)(self.encode_dense[-1])
+#         self.z_log_var = Dense(latent_dim)(self.encode_dense[-1])
+#         self.z = Lambda(self._sampling, output_shape=(latent_dim,))(
+#             [self.z_mean, self.z_log_var]
+#         )
+        
+        self.z = Dense(latent_dim)(self.encode_dense[-1])
+        
         # save all decoding layers for generation model
         self.all_decoding = []
 
@@ -258,13 +260,13 @@ class CVAE(object):
         self.model = Model(self.input, self.output)
         self.optimizer = RMSprop(lr=0.0001, rho=0.9, epsilon=1e-08, decay=0.0)
         # KLD loss
-        self.model.add_loss(
-            -0.5
-            * K.mean(
-                1 + self.z_log_var - K.square(self.z_mean) - K.exp(self.z_log_var),
-                axis=None,
-            )
-        )
+#         self.model.add_loss(
+#             -0.5
+#             * K.mean(
+#                 1 + self.z_log_var - K.square(self.z_mean) - K.exp(self.z_log_var),
+#                 axis=None,
+#             )
+#         )
         self.model.compile(optimizer=self.optimizer, loss=self._vae_loss)
         # self.model.compile(optimizer=self.optimizer)
         # self.model.compile(optimizer=self.optimizer, loss=objectives.MeanSquaredError())
