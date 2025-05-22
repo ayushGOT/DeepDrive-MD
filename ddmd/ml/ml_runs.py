@@ -23,7 +23,7 @@ from ddmd.utils import (
     yml_base,
 )
 
-from .model_tf2 import CVAE
+from .model_ae import CVAE
 
 logger = build_logger()
 
@@ -98,8 +98,9 @@ class ml_base(yml_base):
                     cm[cm > cutoff] = 50.0  # not interested in extremely long-range interactions
                 cm_list.append(cm)
         
-        max_dist = max(max(sublist) for sublist in cm_list)
-        cm_list = [[x / max_dist for x in sublist] for sublist in cm_list]   # normalize all distances to (0,1)
+        if map_type == "distance":
+            max_dist = max(max(sublist) for sublist in cm_list)
+            cm_list = [[x / max_dist for x in sublist] for sublist in cm_list]   # normalize all distances to (0,1)
         
         return np.array(cm_list)
 
