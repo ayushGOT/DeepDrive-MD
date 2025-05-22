@@ -59,7 +59,7 @@ class inference_run(ml_base):
         else: 
             raise("Form not defined, using all, done or running ...")
 
-    def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', restart_pdb=None, target=None, **kwargs): 
+    def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', **kwargs): 
         dcd_files = self.get_md_runs(form=form)
         df_entry = []
         if ref_pdb: 
@@ -97,11 +97,12 @@ class inference_run(ml_base):
                             sel_atoms.positions, sel_ref.positions, 
                             superposition=True)
                     local_entry['rmsd'] = rmsd
-                # possible new analysis
+           
                 df_entry.append(local_entry)
                 
-        max_dist = max(max(sublist) for sublist in cm_list)
-        cm_list = [[x / max_dist for x in sublist] for sublist in cm_list]   # normalize all distances to (0,1)
+        if map_type == "distance":
+            max_dist = max(max(sublist) for sublist in cm_list)
+            cm_list = [[x / max_dist for x in sublist] for sublist in cm_list]   # normalize all distances to (0,1)
         
         df = pd.DataFrame(df_entry)
         if 'strides' in vae_config: 
@@ -110,9 +111,11 @@ class inference_run(ml_base):
         embeddings = self.vae.return_embeddings(vae_input)
         df['embeddings'] = embeddings.tolist()
         outlier_score = lof_score_from_embeddings(embeddings, **kwargs)
-        for i, _ in enumerate(outlier_score):
-            outlier_score[i]= outlier_score[i] if outlier_score[i] > -100 else 0
+        
+#         for i, _ in enumerate(outlier_score):   # in case we want to control the outlierness
+#             outlier_score[i]= outlier_score[i] if outlier_score[i] > -100 else 0
         df['lof_score'] = outlier_score
+        
         return df
 
     def get_cvae(self, **kwargs): 
@@ -135,7 +138,9 @@ class inference_run(ml_base):
         return vae_config
 
     def ddmd_run(self, n_outliers=50, 
-            md_threshold=0.75, screen_iter=10, nudge='no',**kwargs): 
+            md_threshold=0.75, screen_iter=10, nudge='no', restart_pdb=None, target=None, 
+                 lower_bound=None, upper_bound=None, **kwargs): 
+        
         iteration = 0
         while True: 
             trained_models = self.get_trained_models() 
@@ -150,7 +155,25 @@ class inference_run(ml_base):
             # build the dataframe and rank outliers 
             df = self.build_md_df(**kwargs)
             logger.info(f"Built dataframe from {len(df)} frames. ")
-            df_outliers = df.sort_values('lof_score').head(n_outliers)
+            if 'ref_pdb' in kwargs:
+                logger.info(f"Lowest RMSD: {min(df['rmsd'])} A, "\
+                    f"Highest RMSD: {max(df['rmsd'])} A. " )
+            
+            if lower_bound and upper_bound:   # to apply restraint on outliers wrt a physical quantity
+                df_outliers = df[(df['rmsd'] >= lower_bound) & (df['rmsd'] <= upper_bound)]
+                logger.info(f"Restricting outlier RMSD within {lower_bound} and {upper_bound} A ...")
+            elif upper_bound:
+                df_outliers = df[(df['rmsd'] <= upper_bound)]
+                logger.info(f"Restricting outlier RMSD < {upper_bound} A ...")
+            elif lower_bound:
+                df_outliers = df[(df['rmsd'] >= lower_bound)]
+                logger.info(f"Restricting outlier RMSD > {lower_bound} A ...")
+            
+            if len(df_outliers) == 0:
+                logger.info(f"no frame sampled in the specified RMSD limit. ")
+                continue
+
+            df_outliers = df_outliers.sort_values('lof_score').head(n_outliers)
 
             if 'ref_pdb' in kwargs: 
                 if nudge == 'high':     # nudge towards higher RMSD
@@ -159,12 +182,7 @@ class inference_run(ml_base):
                 if nudge == 'low':      # nudge towards lower RMSD
                     df_outliers = df_outliers.sort_values(by='rmsd', ascending=True)
                     logger.info("nudging towards lower RMSD")
-                logger.info(f"Lowest RMSD: {min(df['rmsd'])} A, "\
-                    f"lowest outlier RMSD: {min(df_outliers['rmsd'])} A. "\
-                    f"Highest RMSD: {max(df['rmsd'])} A. " )
-       #             f"Lowest Q: {min(df['Q'])} , "\
-        #            f"Highest Q: {max(df['Q'])} ")
-            # 
+            
             if iteration % screen_iter == 0: 
                 logger.info(df_outliers.to_string())
                 save_df = f"df_outlier_iter_{iteration}.pkl"
