@@ -32,12 +32,22 @@ class ddmd_run(object):
         self.run_ml = self.ddmd_setup['run_ml'] if 'run_ml' in self.ddmd_setup else True  # whether to run ML
         work_dir = self.ddmd_setup['output_dir']
         cont_run =self.ddmd_setup['continue'] if 'continue' in self.ddmd_setup else False
+        self.n_sims=self.ddmd_setup['n_sims']
+        
         if os.path.exists(work_dir):
             if cont_run:
                 md_previous = glob.glob(f"{work_dir}/md_run/md_run_*")
                 md_unfinished = [i for i in md_previous if not os.path.exists(f"{i}/DONE")]
                 for md in md_unfinished: 
                     shutil.move(md, f"{os.path.dirname(md)}/_{os.path.basename(md)}")
+                    
+                # get the cpts of the latest finished md runs
+                md_finished = [os.path.abspath(i) for i in md_previous if os.path.exists(f"{i}/DONE")]
+                cpts = [f"{md}/checkpnt.chk" for md in md_finished]
+                self.ddmd_setup['md_setup']['checkpoint'] = sorted(cpts, key=os.path.getctime, reverse=True)[:self.n_sims]
+                logger.info("Will start simulations from checkpoints of:")
+                for cpt in self.ddmd_setup['md_setup']['checkpoint']:
+                    logger.info(os.path.basename(os.path.dirname(cpt)))  
             else: 
                 bkup_dir = work_dir + f'_{int(time.time())}'
                 shutil.move(work_dir, bkup_dir)
@@ -52,7 +62,6 @@ class ddmd_run(object):
         os.makedirs(self.log_dir, exist_ok=True)
         
         # manage GPUs
-        self.n_sims=self.ddmd_setup['n_sims']
         if self.md_only: 
             n_runs = self.n_sims 
             logger.info(f"Running only {self.n_sims} simulations...")
@@ -79,10 +88,12 @@ class ddmd_run(object):
         md_setup = self.ddmd_setup['md_setup']
         # correcting file path
         input_files = ['pdb_file', 'top_file', 'checkpoint']
-        iter_conf = []
+        iter_conf = []   # to keep track of input types which have multiple values
         for input in input_files: 
             if input in md_setup and md_setup[input]:
-                if not os.path.isabs(md_setup[input]):
+                if type(md_setup[input]) == list:
+                    iter_conf.append(input)
+                elif not os.path.isabs(md_setup[input]):
                     md_setup[input] = os.path.join(self.yml_dir, md_setup[input])
                     logger.debug(f"updated entry{input} to {md_setup[input]}.")
                 if '*' in md_setup[input]: 
