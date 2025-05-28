@@ -143,8 +143,8 @@ class inference_run(ml_base):
         embeddings = self.vae.return_embeddings(vae_input)
         df['embeddings'] = embeddings.tolist()
         outlier_score = lof_score_from_embeddings(embeddings, **kwargs)
-        for i, _ in enumerate(outlier_score):
-            outlier_score[i]= outlier_score[i] if outlier_score[i] > -100 else 0
+#        for i, _ in enumerate(outlier_score):
+ #           outlier_score[i]= outlier_score[i] if outlier_score[i] > -100 else 0
         df['lof_score'] = outlier_score
         return df
 
