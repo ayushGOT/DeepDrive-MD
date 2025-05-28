@@ -3,7 +3,7 @@ import pandas as pd
 from tqdm import tqdm
 from sklearn.cluster import MiniBatchKMeans, KMeans
 
-from ddmd.inference2 import inference_run
+from ddmd.inference import inference_run
 from ddmd.utils import get_dir_base
 
 
@@ -13,7 +13,7 @@ class analysis_run(inference_run):
     
     def run(self, n_clusters=300, random_state=42, init='k-means++', md_form='done', **kwargs): 
         # base analysis from infer
-        df = self.build_md_df(form=md_form, **kwargs)
+        df = self.build_md_df(form=md_form, calc_Q= True, **kwargs)
         df['sys_label'] = [get_dir_base(i) for i in df['dcd']]
         df['gpu_id'] = [i.split('_')[2] for i in df['sys_label']]
         embeddings = np.array(df['embeddings'].to_list())
