@@ -23,7 +23,7 @@ from ddmd.utils import (
     yml_base,
 )
 
-from .model_ae import CVAE
+from .model_vae import CVAE
 
 logger = build_logger()
 
