@@ -21,36 +21,73 @@ logger = build_logger()
 
 ## for Q calculation ###
 
-q1= [15.,16.,16.,16.,16.,17.,17.,17.,17.,17.,17.,18.,18.,18.,18.,18.,20.,20.,
- 20.,20.,21.,21.,21.,21.,49.,49.,49.,50.,50.,50.,50.,50.,50.,50.,50.,50.,
- 51.,51.,51.,51.,51.,51.,51.,51.,51.,51.,51.,51.,52.,52.,52.,52.,52.,52.,
- 52.,52.,52.,52.,52.,52.,52.,52.,54.,54.,54.,54.,54.,54.,54.,54.,54.,55.,
- 55.,55.,55.,55.,55.,55.,55.,55.,55.,58.,58.,82.,84.,84.,84.,84.,84.,84.,
- 84.,85.,85.,85.,85.,85.,85.,85.,88.,88.,88.,88.,88.,88.,88.,88.,89.,89.,
- 89.,89.,89.,90.,90.,90.]    # to store atom no. 1 from the pair of atoms
+# q1= [15.,16.,16.,16.,16.,17.,17.,17.,17.,17.,17.,18.,18.,18.,18.,18.,20.,20.,
+#  20.,20.,21.,21.,21.,21.,49.,49.,49.,50.,50.,50.,50.,50.,50.,50.,50.,50.,
+#  51.,51.,51.,51.,51.,51.,51.,51.,51.,51.,51.,51.,52.,52.,52.,52.,52.,52.,
+#  52.,52.,52.,52.,52.,52.,52.,52.,54.,54.,54.,54.,54.,54.,54.,54.,54.,55.,
+#  55.,55.,55.,55.,55.,55.,55.,55.,55.,58.,58.,82.,84.,84.,84.,84.,84.,84.,
+#  84.,85.,85.,85.,85.,85.,85.,85.,88.,88.,88.,88.,88.,88.,88.,88.,89.,89.,
+#  89.,89.,89.,90.,90.,90.]    # to store atom no. 1 from the pair of atoms
 
-q2= [315.,314.,315.,318.,319.,284.,312.,314.,315.,318.,319.,314.,315.,318.,
- 319.,320.,314.,318.,319.,320.,314.,318.,319.,320.,284.,315.,318.,250.,
- 283.,284.,287.,288.,314.,315.,318.,319.,249.,250.,251.,281.,283.,284.,
- 287.,288.,312.,314.,315.,318.,250.,251.,283.,284.,287.,288.,289.,309.,
- 312.,314.,315.,318.,319.,320.,283.,284.,287.,288.,289.,314.,318.,319.,
- 320.,254.,283.,287.,288.,289.,309.,314.,318.,319.,320.,318.,320.,250.,
- 249.,250.,251.,253.,254.,284.,287.,248.,249.,250.,251.,283.,284.,287.,
- 249.,250.,251.,253.,254.,283.,284.,287.,249.,250.,251.,253.,254.,251.,
- 253.,254.]      # to store atom no. 2 from the pair of atoms
+# q2= [315.,314.,315.,318.,319.,284.,312.,314.,315.,318.,319.,314.,315.,318.,
+#  319.,320.,314.,318.,319.,320.,314.,318.,319.,320.,284.,315.,318.,250.,
+#  283.,284.,287.,288.,314.,315.,318.,319.,249.,250.,251.,281.,283.,284.,
+#  287.,288.,312.,314.,315.,318.,250.,251.,283.,284.,287.,288.,289.,309.,
+#  312.,314.,315.,318.,319.,320.,283.,284.,287.,288.,289.,314.,318.,319.,
+#  320.,254.,283.,287.,288.,289.,309.,314.,318.,319.,320.,318.,320.,250.,
+#  249.,250.,251.,253.,254.,284.,287.,248.,249.,250.,251.,283.,284.,287.,
+#  249.,250.,251.,253.,254.,283.,284.,287.,249.,250.,251.,253.,254.,251.,
+#  253.,254.]      # to store atom no. 2 from the pair of atoms
 
-ref= [0.744,0.621,0.539,0.553,0.721,0.733,0.743,0.536,0.408,0.528,0.722,0.564,
- 0.551,0.436,0.565,0.565,0.736,0.577,0.65 ,0.589,0.747,0.56 ,0.569,0.462,
- 0.745,0.737,0.703,0.713,0.618,0.538,0.553,0.72 ,0.622,0.579,0.602,0.73 ,
- 0.713,0.628,0.736,0.742,0.534,0.408,0.529,0.723,0.742,0.592,0.495,0.623,
- 0.737,0.689,0.563,0.552,0.437,0.567,0.566,0.738,0.695,0.589,0.606,0.564,
- 0.645,0.709,0.734,0.749,0.575,0.649,0.589,0.71 ,0.639,0.662,0.68 ,0.729,
- 0.746,0.56 ,0.569,0.462,0.704,0.749,0.689,0.664,0.686,0.739,0.73 ,0.741,
- 0.619,0.534,0.564,0.736,0.747,0.717,0.732,0.746,0.538,0.408,0.551,0.717,
- 0.61 ,0.716,0.551,0.527,0.435,0.575,0.56 ,0.731,0.715,0.664,0.72 ,0.722,
- 0.566,0.65 ,0.57 ,0.564,0.587,0.461]  # to store the native distances (already mutiplied by 1.5) b/w the pair of atoms
+# ref= [0.744,0.621,0.539,0.553,0.721,0.733,0.743,0.536,0.408,0.528,0.722,0.564,
+#  0.551,0.436,0.565,0.565,0.736,0.577,0.65 ,0.589,0.747,0.56 ,0.569,0.462,
+#  0.745,0.737,0.703,0.713,0.618,0.538,0.553,0.72 ,0.622,0.579,0.602,0.73 ,
+#  0.713,0.628,0.736,0.742,0.534,0.408,0.529,0.723,0.742,0.592,0.495,0.623,
+#  0.737,0.689,0.563,0.552,0.437,0.567,0.566,0.738,0.695,0.589,0.606,0.564,
+#  0.645,0.709,0.734,0.749,0.575,0.649,0.589,0.71 ,0.639,0.662,0.68 ,0.729,
+#  0.746,0.56 ,0.569,0.462,0.704,0.749,0.689,0.664,0.686,0.739,0.73 ,0.741,
+#  0.619,0.534,0.564,0.736,0.747,0.717,0.732,0.746,0.538,0.408,0.551,0.717,
+#  0.61 ,0.716,0.551,0.527,0.435,0.575,0.56 ,0.731,0.715,0.664,0.72 ,0.722,
+#  0.566,0.65 ,0.57 ,0.564,0.587,0.461]  # to store the native distances (already mutiplied by 1.5) b/w the pair of atoms
 
 #####
+def native_contacts(ref_pdb):    # to determine atom pairs to be used for considering native contacts
+    mda_ref= mda.Universe(ref_pdb)
+
+    # Define 3' and 5' strand residues
+    three_prime_residues = [8, 9, 10]
+    five_prime_residues = [1, 2, 3]
+    
+    # Define nucleobase atoms (excluding sugar/phosphate)
+    nucleobase_atoms = ['C2', 'C4', 'C5', 'C6', 'C8', 'N1', 'N3', 'N7', 'N9', 'O2', 'N2', 'O6', 'N6', 'O4']  # includes purine + pyrimidine variants
+    
+    q1 = []
+    q2 = []
+    ref = []
+    
+    # Loop over all inter-strand nucleotide pairs
+    for res_i in three_prime_residues:
+        for res_j in five_prime_residues:
+            # Select heavy nucleobase atoms for each residue
+            # atoms_i = mda_ref.select_atoms(f"resid {res_i} and nucleicbase")  # this didn't work for residues 1 and 10
+            # atoms_j = mda_ref.select_atoms(f"resid {res_j} and nucleicbase")
+            atoms_i = mda_ref.select_atoms(
+                f"resid {res_i} and name {' '.join(nucleobase_atoms)} and not name H*"
+            )
+            atoms_j = mda_ref.select_atoms(
+                f"resid {res_j} and name {' '.join(nucleobase_atoms)} and not name H*"
+            )
+    
+            # Loop over all atom pairs
+            for ai in atoms_i:
+                for aj in atoms_j:
+                    dist = np.linalg.norm(ai.position - aj.position)
+                    if dist < 5.0:  # Å
+                        q1.append(ai.index + 1)  # convert to 1-based index
+                        q2.append(aj.index + 1)
+                        ref.append(dist * 0.1 * 1.5)  # convert to nm and scale by 1.5
+    logger.info("Determined atom pairs for considering native contacts.")
+    return q1,q2,ref
 
 class inference_run(ml_base): 
     """
@@ -105,6 +142,11 @@ class inference_run(ml_base):
         map_type = vae_config['map_type'] if 'map_type' in vae_config else 'binary'
         logger.info(f"Processing MD trajectories using {map_type} contact maps")
         cm_list = []
+
+        ## Extracting atom pairs for considering native contacts (Q)
+        if calc_Q:
+            q1,q2,ref= native_contacts(ref_pdb)
+            
         for dcd in tqdm(dcd_files): 
             setup_yml = f"{os.path.dirname(dcd)}/setting.yml"
             pdb_file = dict_from_yaml(setup_yml)['pdb_file']
@@ -135,7 +177,7 @@ class inference_run(ml_base):
                 ## Calculating and storing Q
                 if calc_Q:
                     r= np.array([])
-                    for i in range(ref):
+                    for i in range(len(ref)):
                         atom1, atom2 =mda_u.select_atoms("bynum %i" %q1[i]), mda_u.select_atoms("bynum %i" %q2[i])
                         dist= distances.distance_array(atom1.positions,atom2.positions)*0.1
                         r=np.append(r,dist)
@@ -155,8 +197,9 @@ class inference_run(ml_base):
         df['embeddings'] = embeddings.tolist()
         outlier_score = lof_score_from_embeddings(embeddings, **kwargs)
         
-#         for i, _ in enumerate(outlier_score):   # in case we want to control the outlierness
-#             outlier_score[i]= outlier_score[i] if outlier_score[i] > -100 else 0
+        logger.info(f"Restricting outlier scores to be > -100")
+        for i, _ in enumerate(outlier_score):   # in case we want to control the outlierness
+            outlier_score[i]= outlier_score[i] if outlier_score[i] > -100 else 0
         df['lof_score'] = outlier_score
         
         return df
@@ -211,12 +254,17 @@ class inference_run(ml_base):
             elif lower_bound:
                 df_outliers = df[(df['rmsd'] >= lower_bound)]
                 logger.info(f"Restricting outlier RMSD > {lower_bound} A ...")
-            
-            if len(df_outliers) == 0:
+            else:
+                df_outliers = df
+
+            if df_outliers.empty:
                 logger.info(f"no frame sampled in the specified RMSD limit. ")
                 continue
 
-            df_outliers = df_outliers.sort_values('lof_score').head(n_outliers)
+            if len(df_outliers) < n_outliers:
+                df_outliers = df_outliers.sort_values('lof_score')
+            else:
+                df_outliers = df_outliers.sort_values('lof_score').head(n_outliers)
 
             if 'ref_pdb' in kwargs: 
                 if nudge == 'high':     # nudge towards higher RMSD
