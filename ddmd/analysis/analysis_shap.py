@@ -3,7 +3,7 @@ import pandas as pd
 from tqdm import tqdm
 from sklearn.cluster import MiniBatchKMeans, KMeans
 
-from ddmd.inference import inference_run
+from ddmd.inference_shap import inference_run
 from ddmd.utils import get_dir_base
 
 
