@@ -1,6 +1,7 @@
 import time
 import ddmd
-from ddmd.ddmd import ddmd_run
+from ddmd.ddmd_inference_shareGPU import ddmd_run
+#from ddmd.ddmd import ddmd_run
 from ddmd.utils import parse_args
 
 logger = ddmd.utils.build_logger(debug=1)
