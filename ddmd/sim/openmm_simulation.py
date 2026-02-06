@@ -194,9 +194,9 @@ class Simulate(yml_base):
             self.top.topology, self.system, integrator, platform, properties)
         self.simulation = simulation
 
-    def minimize_Energy(self,level=0):
+    def minimize_Energy(self,level=1):
         self.simulation.context.setPositions(self.top.positions)
-        if level ==0:        # only minimize for the very first IC
+        if level==1:        # only minimize for the very first IC
             self.simulation.minimizeEnergy()
 
     def add_reporters(self):
@@ -213,7 +213,7 @@ class Simulate(yml_base):
         self.simulation.reporters.append(
             app.CheckpointReporter('checkpnt.chk', report_freq))
 
-    def run_sim(self, path='./',level=0):
+    def run_sim(self, path='./',level=1):
         if not os.path.exists(path):
             os.makedirs(path)
 
@@ -233,13 +233,17 @@ class Simulate(yml_base):
         touch_file('DONE')
         os.chdir(self.base_dir)
 
-    def ddmd_run(self, iter=1e6, level=0):
+    def ddmd_run(self, iter=1e6, level=1):
         """ddmd recursive MD runs"""
+        
+        if self.checkpoint: # this will help maintaining the cycle number progression if the whole workflow is continued from cpts
+            level= int(self.checkpoint.split("/")[-2].split("_")[-2].split("cycle")[-1]) + 1
+        
         if iter == 0:
             logger.info(f"<< Finished {level} iterations of MD simulations >>")
             return
         path_label = os.environ['CUDA_VISIBLE_DEVICES']
-        omm_path = create_path(sys_label=path_label)
+        omm_path = create_path(sys_label=f"{path_label}_cycle{level}")
         logger.info(f"Starting simulation at {omm_path}")
         self.dump_yaml(f"{omm_path}/setting.yml")
         self.run_sim(omm_path,level)
@@ -254,6 +258,9 @@ class Simulate(yml_base):
                         "starting new simulation...")
             self.pdb_file = pdb_file
             self.checkpoint = None
+#         elif path_label == "1":   # if this sim(s) was run only to occupy the GPU until inference kicks in; enter the relevant GPU number(s) here
+#             logger.info(f"<<   Walker stopped forever   >>")
+#             return
         else:
             logger.info(f"    Continue the simulation elsewhere...")
             self.checkpoint = os.path.abspath(f"{omm_path}/checkpnt.chk")
