@@ -1,1 +1,1 @@
-from .inference import inference_run
+from .inference_WE import inference_run
