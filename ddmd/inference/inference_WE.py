@@ -132,7 +132,7 @@ class inference_run(ml_base):
         else: 
             raise("Form not defined, using all, done or running ...")
 
-    def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', calc_Q=False, **kwargs): 
+    def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', calc_Q=False, restrict_LOF=True, **kwargs): 
         dcd_files = self.get_md_runs(form=form)
         df_entry = []
         if ref_pdb: 
@@ -199,9 +199,11 @@ class inference_run(ml_base):
         df['embeddings'] = embeddings.tolist()
         outlier_score = lof_score_from_embeddings(embeddings, **kwargs)
         
-        logger.info(f"Restricting outlier scores to be > -100")
-        for i, _ in enumerate(outlier_score):   # in case we want to control the outlierness
-            outlier_score[i]= outlier_score[i] if outlier_score[i] > -100 else 0
+        if restrict_LOF:   # in case we want to control the outlierness
+            logger.info(f"Restricting outlier scores to be > -100")
+            for i, _ in enumerate(outlier_score):   
+                outlier_score[i]= outlier_score[i] if outlier_score[i] > -100 else 0
+        
         df['lof_score'] = outlier_score
         
         return df
@@ -245,14 +247,15 @@ class inference_run(ml_base):
                      get_numoflines(md_done[0].replace('dcd', 'log')) - 1
            
            ## delete the walker(s) which were run just to occupy the GPU(s)
-            if not os.path.exists("../run_logs/walker_stopped"):
-                for sim in md_done:
-                    sim_path = os.path.dirname(sim)
-                    gpu_number = os.path.basename(sim_path).split("_")[2]
-                    if gpu_number == "1":     # enter the relevant GPU number(s) here
-                        shutil.rmtree(sim_path)
-                        os.remove("../run_logs/md_1")
-                        touch_file("../run_logs/walker_stopped")
+#             if not os.path.exists("../run_logs/walker_stopped"):
+#                 for sim in md_done:
+#                     sim_path = os.path.dirname(sim)
+#                     gpu_number = os.path.basename(sim_path).split("_")[2]
+#                     if gpu_number == "1":     # enter the relevant GPU number(s) here
+#                         #shutil.rmtree(sim_path)
+#                         os.remove(f"{sim_path}/output.dcd")
+#                         os.remove("../run_logs/md_1")
+#                         touch_file("../run_logs/walker_stopped")
             
             n_walkers = len(glob.glob(f"../run_logs/md*"))
             
@@ -322,6 +325,7 @@ class inference_run(ml_base):
                 cycle_dict[cycle_number] = len(glob.glob(f"../md_run/*cycle{cycle_number}*/new_pdb")) # how many walkers in the cycle have already been setup to stop
 
                 logger.info(f"no. of walkers: {n_walkers}")
+                
                 if (
                     cycle_dict[cycle_number] < n_walkers-1 
                     or (cycle_dict[cycle_number] == n_walkers-1 and os.path.exists(f"{sim_path}/new_pdb"))
@@ -331,13 +335,17 @@ class inference_run(ml_base):
 #                     if os.path.exists(restart_frame): 
 #                         continue
                     outlier = df_outliers.iloc[i]
-                    outlier.to_json(restart_frame)
-                    logger.info(f"{get_dir_base(sim)} finished "\
-                        f"{get_numoflines(sim.replace('dcd', 'log'))} "\
-                        f"of {len_md_done} frames, yet no outlier detected.")
-                    logger.info(f"Writing new pdb from frame "\
-                        f"{outlier['frame']} of {get_dir_base(outlier['dcd'])} "\
-                        f"to {get_dir_base(sim)}")
+                    outlier_cycle_number = get_dir_base(outlier['dcd']).split("_")[-2].split("cycle")[-1]
+                    if int(outlier_cycle_number) <= int(cycle_number): # outlier shouldn't be picked from a cycle after the current cycle
+                        outlier.to_json(restart_frame)
+                        logger.info(f"{get_dir_base(sim)} finished "\
+                            f"{get_numoflines(sim.replace('dcd', 'log'))} "\
+                            f"of {len_md_done} frames, yet no outlier detected.")
+                        logger.info(f"Writing new pdb from frame "\
+                            f"{outlier['frame']} of {get_dir_base(outlier['dcd'])} "\
+                            f"to {get_dir_base(sim)}")
+                    else:
+                        logger.info(f"Prevented an outlier from cycle{outlier_cycle_number} to go into cycle{int(cycle_number)+1}")
                 else: 
                     logger.info(f"saved 1 walker from cycle{cycle_number} from being killed...")
                     touch_file(f"{sim_path}/SAVED")    # not really needed but just for tracking purpose
