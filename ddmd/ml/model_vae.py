@@ -372,10 +372,11 @@ class CVAE(object):
             )
 
         data_D = (
-            tf.data.Dataset.from_tensor_slices((data, data))
-            .batch(batch_size)
-            .prefetch(1)
-        )
+    tf.data.Dataset.from_tensor_slices((data, data))
+    .shuffle(4096)
+    .batch(batch_size, drop_remainder=True)
+    .prefetch(tf.data.AUTOTUNE)
+    )
         validation_data_D = (
             tf.data.Dataset.from_tensor_slices((validation_data, validation_data))
             .batch(batch_size)
