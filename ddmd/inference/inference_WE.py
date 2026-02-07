@@ -227,10 +227,12 @@ class inference_run(ml_base):
         self.vae.load(vae_weight)
         return vae_config
 
-    def ddmd_run(self, n_outliers=50, 
+    def ddmd_run(self, WE=True, n_outliers=50, 
             md_threshold=0.75, screen_iter=10, nudge='no', restart_pdb=None, target=None, 
                  lower_bound=None, upper_bound=None, **kwargs): 
         
+        if WE:
+            logger.info(f"Running in weighted ensemble manner.... ")
         iteration = 0
         cycle_dict= {}    # dictionary to save number of sims already setup to stop in a particular cycle
         while True: 
@@ -326,9 +328,9 @@ class inference_run(ml_base):
 
                 logger.info(f"no. of walkers: {n_walkers}")
                 
-                if (
-                    cycle_dict[cycle_number] < n_walkers-1 
-                    or (cycle_dict[cycle_number] == n_walkers-1 and os.path.exists(f"{sim_path}/new_pdb"))
+                if (not WE
+                    or (WE and (cycle_dict[cycle_number] < n_walkers-1 
+                    or (cycle_dict[cycle_number] == n_walkers-1 and os.path.exists(f"{sim_path}/new_pdb"))))
                 ): # to save atleast 1 walker in a cycle from being killed
                     logger.info("entered....")
                     restart_frame = f"{sim_path}/new_pdb"
