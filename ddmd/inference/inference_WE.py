@@ -123,17 +123,17 @@ class inference_run(ml_base):
 
     def get_md_runs(self, form:str='all') -> List: 
         if form.lower() == 'all': 
-            return sorted(glob.glob(f'{self.md_path}/md_run*/*dcd'))
+            return sorted(glob.glob(f'{self.md_path}/md_run*/*xtc'))
         elif form.lower() == 'done': 
             md_done = sorted(glob.glob(f'{self.md_path}/md_run*/DONE'))
-            return [f'{os.path.dirname(i)}/output.dcd' for i in md_done]
+            return [f'{os.path.dirname(i)}/output.xtc' for i in md_done]
         elif form.lower() == 'running': 
             return [i for i in self.get_md_runs(form='all') if i not in self.get_md_runs(form='done')]
         else: 
             raise("Form not defined, using all, done or running ...")
 
     def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', calc_Q=False, restrict_LOF=True, **kwargs): 
-        dcd_files = self.get_md_runs(form=form)
+        xtc_files = self.get_md_runs(form=form)
         df_entry = []
         if ref_pdb: 
             ref_u = mda.Universe(ref_pdb)
@@ -149,13 +149,13 @@ class inference_run(ml_base):
         if calc_Q:
             q1,q2,ref= native_contacts(ref_pdb)
             
-        for dcd in tqdm(dcd_files): 
-            setup_yml = f"{os.path.dirname(dcd)}/setting.yml"
+        for xtc in tqdm(xtc_files): 
+            setup_yml = f"{os.path.dirname(xtc)}/setting.yml"
             pdb_file = dict_from_yaml(setup_yml)['pdb_file']
             try: 
-                mda_u = mda.Universe(self.pdb_file, dcd)
+                mda_u = mda.Universe(self.pdb_file, xtc)
             except: 
-                logger.info(f"Skipping {dcd}...")
+                logger.info(f"Skipping {xtc}...")
                 continue
 
             sel_atoms = mda_u.select_atoms(atom_sel)  # atom selection to calculate RMSD
@@ -168,7 +168,7 @@ class inference_run(ml_base):
                     cm[cm > cm_cutoff] = 50.0                # not interested in extremely long-range interactions
                 cm_list.append(cm)
                 local_entry = {'pdb': os.path.abspath(pdb_file), 
-                            'dcd': os.path.abspath(dcd), 
+                            'xtc': os.path.abspath(xtc), 
                             'frame': ts.frame}
                 if ref_pdb: 
                     rmsd = rms.rmsd(
@@ -246,7 +246,7 @@ class inference_run(ml_base):
                 continue
             else: 
                 len_md_done = \
-                     get_numoflines(md_done[0].replace('dcd', 'log')) - 1
+                     get_numoflines(md_done[0].replace('xtc', 'log')) - 1
            
            ## delete the walker(s) which were run just to occupy the GPU(s)
 #             if not os.path.exists("../run_logs/walker_stopped"):
@@ -255,7 +255,7 @@ class inference_run(ml_base):
 #                     gpu_number = os.path.basename(sim_path).split("_")[2]
 #                     if gpu_number == "1":     # enter the relevant GPU number(s) here
 #                         #shutil.rmtree(sim_path)
-#                         os.remove(f"{sim_path}/output.dcd")
+#                         os.remove(f"{sim_path}/output.xtc")
 #                         os.remove("../run_logs/md_1")
 #                         touch_file("../run_logs/walker_stopped")
             
@@ -303,11 +303,11 @@ class inference_run(ml_base):
             # assess simulations 
             sim_running = self.get_md_runs(form='running')
             sim_to_stop = [i for i in sim_running \
-                    if i not in set(df_outliers['dcd'].to_list())]
+                    if i not in set(df_outliers['xtc'].to_list())]
             # only stop simulations that have been running for a while
             # 3/4 done
             sim_to_stop = [i for i in sim_to_stop \
-                    if get_numoflines(i.replace('dcd', 'log')) \
+                    if get_numoflines(i.replace('xtc', 'log')) \
                     > len_md_done * md_threshold]
             
             
@@ -318,7 +318,7 @@ class inference_run(ml_base):
             for i, sim in enumerate(sim_to_stop):
                 logger.info(f"sim_to_stop {i+1}; {cycle_dict} ")
                 sim_path = os.path.dirname(sim)
-                sim_run_len = get_numoflines(sim.replace('dcd', 'log'))
+                sim_run_len = get_numoflines(sim.replace('xtc', 'log'))
                 if sim_run_len >= len_md_done: 
                     logger.info(f"{get_dir_base(sim)} finished before inferencing, skipping...")
                     continue
@@ -337,14 +337,14 @@ class inference_run(ml_base):
 #                     if os.path.exists(restart_frame): 
 #                         continue
                     outlier = df_outliers.iloc[i]
-                    outlier_cycle_number = get_dir_base(outlier['dcd']).split("_")[-2].split("cycle")[-1]
+                    outlier_cycle_number = get_dir_base(outlier['xtc']).split("_")[-2].split("cycle")[-1]
                     if int(outlier_cycle_number) <= int(cycle_number): # outlier shouldn't be picked from a cycle after the current cycle
                         outlier.to_json(restart_frame)
                         logger.info(f"{get_dir_base(sim)} finished "\
-                            f"{get_numoflines(sim.replace('dcd', 'log'))} "\
+                            f"{get_numoflines(sim.replace('xtc', 'log'))} "\
                             f"of {len_md_done} frames, yet no outlier detected.")
                         logger.info(f"Writing new pdb from frame "\
-                            f"{outlier['frame']} of {get_dir_base(outlier['dcd'])} "\
+                            f"{outlier['frame']} of {get_dir_base(outlier['xtc'])} "\
                             f"to {get_dir_base(sim)}")
                     else:
                         logger.info(f"Prevented an outlier from cycle{outlier_cycle_number} to go into cycle{int(cycle_number)+1}")
@@ -352,7 +352,7 @@ class inference_run(ml_base):
                     logger.info(f"saved 1 walker from cycle{cycle_number} from being killed...")
                     touch_file(f"{sim_path}/SAVED")    # not really needed but just for tracking purpose
                     #break
-                    # write_pdb_frame(, dcd, frame, save_path=None)
+                    # write_pdb_frame(, xtc, frame, save_path=None)
 
             logger.info(f"\n=======> Done iteration {iteration} <========\n")
             time.sleep(1)
