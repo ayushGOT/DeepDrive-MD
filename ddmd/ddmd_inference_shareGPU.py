@@ -76,7 +76,7 @@ class ddmd_run(object):
         if len(self.gpu_ids) < n_runs: 
             n_gpus = len(self.gpu_ids)
             self.n_sims = self.n_sims + n_gpus - n_runs
-            logger.info("Not enough GPUs avaible for all the runs, and "\
+            logger.info("Not enough GPUs available for all the runs, and "\
                 f"reduce number of MD runs to {self.n_sims}")
             logger.info(f"New configuration: {self.n_sims} simulations, ")
             if self.md_only:
@@ -129,7 +129,7 @@ class ddmd_run(object):
         if self.md_only: 
             self.ml_path = None
             self.infer_path = None
-            return md_yml, None, None
+            return md_ymls, None, None
 
         ml_setup = self.ddmd_setup['ml_setup'].copy() 
         ml_setup['pdb_file'] = md_setup['pdb_file']
