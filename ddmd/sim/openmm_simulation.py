@@ -1,6 +1,7 @@
 import os
 import json
 import parmed as pmd
+import mdtraj as md
 
 # try:
 #     import simtk.openmm as omm
@@ -47,7 +48,7 @@ class Simulate(yml_base):
         Use strings, '0,1' for example, to use more than 1 GPU,
 
     output_traj : ``str``
-        The output trajectory file (.dcd), This is the file
+        The output trajectory file (.xtc), This is the file
         stores all the coordinates information of the MD
         simulation results. 
 
@@ -90,7 +91,7 @@ class Simulate(yml_base):
                  top_file=None,
                  checkpoint=None,
                  gpu_id=0,
-                 output_traj="output.dcd",
+                 output_traj="output.xtc",
                  output_log="output.log",
                  # output_cm=None,
                  report_time=10,
@@ -113,6 +114,7 @@ class Simulate(yml_base):
         self.checkpoint = checkpoint
         self.gpu_id = str(gpu_id)
         # outputs
+        self.output_traj_selection = output_traj_selection
         self.output_traj = output_traj
         self.output_log = output_log
         # self.output_cm = output_cm
@@ -199,10 +201,20 @@ class Simulate(yml_base):
         if level==1:        # only minimize for the very first IC
             self.simulation.minimizeEnergy()
 
-    def add_reporters(self):
+    def add_reporters(self):    
         report_freq = int(self.report_time / self.dt)
-        self.simulation.reporters.append(
-            app.DCDReporter(self.output_traj, report_freq))
+        if self.output_traj_selection:
+            top_md = md.Topology.from_openmm(self.top.topology)
+            sel_atoms = top_md.select(self.output_traj_selection)
+            self.simulation.reporters.append(
+                md.reporters.XTCReporter(self.output_traj, report_freq, atomSubset=sel_atoms)
+                )
+        else:
+            self.simulation.reporters.append(
+                md.reporters.XTCReporter(self.output_traj, report_freq)
+            )
+        # self.simulation.reporters.append(
+        #     app.XTCReporter(self.output_traj, report_freq))
         # if self.output_cm:
         #     self.simulation.reporters.append(
         #             ContactMapReporter(self.output_cm, report_freq))
@@ -252,7 +264,7 @@ class Simulate(yml_base):
         if os.path.exists(new_pdb):
             pdb_info = json.load(open(new_pdb, 'r'))
             pdb_file = write_pdb_frame(
-                pdb_info['pdb'], pdb_info['dcd'],
+                pdb_info['pdb'], pdb_info['xtc'],
                 pdb_info['frame'], save_path=omm_path)
             logger.info(f"    Found new pdb file, "
                         "starting new simulation...")
