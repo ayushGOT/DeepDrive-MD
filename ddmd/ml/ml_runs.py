@@ -76,17 +76,17 @@ class ml_base(yml_base):
     ):
         # only use one traj file if dry run
         if dry_run:
-            dcd_files = sorted(glob.glob(f"{self.md_path}/md_run_*/*.dcd"))[:1]
+            xtc_files = sorted(glob.glob(f"{self.md_path}/md_run_*/*.xtc"))[:1]
         else:
-            dcd_files = sorted(glob.glob(f"{self.md_path}/md_run_*/*.dcd"))
+            xtc_files = sorted(glob.glob(f"{self.md_path}/md_run_*/*.xtc"))
 
         logger.info(f"Collecting cm for CVAE. Atom sel={atom_sel}")
         cm_list = []
-        for dcd in tqdm(dcd_files):
+        for xtc in tqdm(xtc_files):
             try:
-                mda_u = mda.Universe(self.pdb_file, dcd)
+                mda_u = mda.Universe(self.pdb_file, xtc)
             except:
-                logger.debug(f"Skipping {dcd}...")
+                logger.debug(f"Skipping {xtc}...")
                 continue
 
             ca = mda_u.select_atoms(atom_sel)
