@@ -94,6 +94,7 @@ class Simulate(yml_base):
                  output_traj="output.xtc",
                  output_log="output.log",
                  # output_cm=None,
+                 output_traj_selection="all",
                  report_time=10,
                  sim_time=10,
                  dt=2.,
