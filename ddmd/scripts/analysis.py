@@ -1,6 +1,6 @@
 #!env python
 
-from ddmd.analysis.analysis import analysis_run
+from ddmd.analysis.analysis_shap import analysis_run
 from ddmd.utils import dict_from_yaml, parse_args, separate_kwargs
 
 def main(args): 
