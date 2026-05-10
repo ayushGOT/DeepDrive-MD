@@ -22,34 +22,43 @@ logger = build_logger()
 
 ## for Q calculation ###
 
-q1= [15.,16.,16.,16.,16.,17.,17.,17.,17.,17.,17.,18.,18.,18.,18.,18.,20.,20.,
- 20.,20.,21.,21.,21.,21.,49.,49.,49.,50.,50.,50.,50.,50.,50.,50.,50.,50.,
- 51.,51.,51.,51.,51.,51.,51.,51.,51.,51.,51.,51.,52.,52.,52.,52.,52.,52.,
- 52.,52.,52.,52.,52.,52.,52.,52.,54.,54.,54.,54.,54.,54.,54.,54.,54.,55.,
- 55.,55.,55.,55.,55.,55.,55.,55.,55.,58.,58.,82.,84.,84.,84.,84.,84.,84.,
- 84.,85.,85.,85.,85.,85.,85.,85.,88.,88.,88.,88.,88.,88.,88.,88.,89.,89.,
- 89.,89.,89.,90.,90.,90.]    # to store atom no. 1 from the pair of atoms
+def native_contacts(ref_pdb):    # to determine atom pairs to be used for considering native contacts
+    mda_ref= mda.Universe(ref_pdb)
 
-q2= [315.,314.,315.,318.,319.,284.,312.,314.,315.,318.,319.,314.,315.,318.,
- 319.,320.,314.,318.,319.,320.,314.,318.,319.,320.,284.,315.,318.,250.,
- 283.,284.,287.,288.,314.,315.,318.,319.,249.,250.,251.,281.,283.,284.,
- 287.,288.,312.,314.,315.,318.,250.,251.,283.,284.,287.,288.,289.,309.,
- 312.,314.,315.,318.,319.,320.,283.,284.,287.,288.,289.,314.,318.,319.,
- 320.,254.,283.,287.,288.,289.,309.,314.,318.,319.,320.,318.,320.,250.,
- 249.,250.,251.,253.,254.,284.,287.,248.,249.,250.,251.,283.,284.,287.,
- 249.,250.,251.,253.,254.,283.,284.,287.,249.,250.,251.,253.,254.,251.,
- 253.,254.]      # to store atom no. 2 from the pair of atoms
-
-ref= [0.744,0.621,0.539,0.553,0.721,0.733,0.743,0.536,0.408,0.528,0.722,0.564,
- 0.551,0.436,0.565,0.565,0.736,0.577,0.65 ,0.589,0.747,0.56 ,0.569,0.462,
- 0.745,0.737,0.703,0.713,0.618,0.538,0.553,0.72 ,0.622,0.579,0.602,0.73 ,
- 0.713,0.628,0.736,0.742,0.534,0.408,0.529,0.723,0.742,0.592,0.495,0.623,
- 0.737,0.689,0.563,0.552,0.437,0.567,0.566,0.738,0.695,0.589,0.606,0.564,
- 0.645,0.709,0.734,0.749,0.575,0.649,0.589,0.71 ,0.639,0.662,0.68 ,0.729,
- 0.746,0.56 ,0.569,0.462,0.704,0.749,0.689,0.664,0.686,0.739,0.73 ,0.741,
- 0.619,0.534,0.564,0.736,0.747,0.717,0.732,0.746,0.538,0.408,0.551,0.717,
- 0.61 ,0.716,0.551,0.527,0.435,0.575,0.56 ,0.731,0.715,0.664,0.72 ,0.722,
- 0.566,0.65 ,0.57 ,0.564,0.587,0.461]  # to store the native distances (already mutiplied by 1.5) b/w the pair of atoms
+    # Define 3' and 5' strand residues
+    three_prime_residues = [8, 9, 10]
+    five_prime_residues = [1, 2, 3]
+    
+    # Define nucleobase atoms (excluding sugar/phosphate)
+    nucleobase_atoms = ['C2', 'C4', 'C5', 'C6', 'C8', 'N1', 'N3', 'N7', 'N9', 'O2', 'N2', 'O6', 'N6', 'O4']  # includes purine + pyrimidine variants
+    
+    q1 = []
+    q2 = []
+    ref = []
+    
+    # Loop over all inter-strand nucleotide pairs
+    for res_i in three_prime_residues:
+        for res_j in five_prime_residues:
+            # Select heavy nucleobase atoms for each residue
+            # atoms_i = mda_ref.select_atoms(f"resid {res_i} and nucleicbase")  # this didn't work for residues 1 and 10
+            # atoms_j = mda_ref.select_atoms(f"resid {res_j} and nucleicbase")
+            atoms_i = mda_ref.select_atoms(
+                f"resid {res_i} and name {' '.join(nucleobase_atoms)} and not name H*"
+            )
+            atoms_j = mda_ref.select_atoms(
+                f"resid {res_j} and name {' '.join(nucleobase_atoms)} and not name H*"
+            )
+    
+            # Loop over all atom pairs
+            for ai in atoms_i:
+                for aj in atoms_j:
+                    dist = np.linalg.norm(ai.position - aj.position)
+                    if dist < 5.0:  # Å
+                        q1.append(ai.index + 1)  # convert to 1-based index
+                        q2.append(aj.index + 1)
+                        ref.append(dist * 0.1 * 1.5)  # convert to nm and scale by 1.5
+    logger.info("Determined atom pairs for considering native contacts.")
+    return q1,q2,ref
 
 #####
 
@@ -85,17 +94,17 @@ class inference_run(ml_base):
 
     def get_md_runs(self, form:str='all') -> List: 
         if form.lower() == 'all': 
-            return sorted(glob.glob(f'{self.md_path}/md_run*/*dcd'))
+            return sorted(glob.glob(f'{self.md_path}/md_run*/*xtc'))
         elif form.lower() == 'done': 
             md_done = sorted(glob.glob(f'{self.md_path}/md_run*/DONE'))
-            return [f'{os.path.dirname(i)}/output.dcd' for i in md_done]
+            return [f'{os.path.dirname(i)}/output.xtc' for i in md_done]
         elif form.lower() == 'running': 
             return [i for i in self.get_md_runs(form='all') if i not in self.get_md_runs(form='done')]
         else: 
             raise("Form not defined, using all, done or running ...")
 
     def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', calc_Q=False, compute_shap=False, shap_batch_size=100, shap_outdir="shap_maps", **kwargs): 
-        dcd_files = self.get_md_runs(form=form)
+        xtc_files = self.get_md_runs(form=form)
         df_entry = []
         if ref_pdb: 
             ref_u = mda.Universe(ref_pdb)
@@ -106,18 +115,23 @@ class inference_run(ml_base):
         map_type = vae_config['map_type'] if 'map_type' in vae_config else 'binary'
         logger.info(f"Processing MD trajectories using {map_type} contact maps")
         cm_list = []
-        for dcd in tqdm(dcd_files): 
-            setup_yml = f"{os.path.dirname(dcd)}/setting.yml"
+        
+        ## Extracting atom pairs for considering native contacts (Q)
+        if calc_Q:
+            q1,q2,ref= native_contacts(ref_pdb)
+            
+        for xtc in tqdm(xtc_files): 
+            setup_yml = f"{os.path.dirname(xtc)}/setting.yml"
             pdb_file = dict_from_yaml(setup_yml)['pdb_file']
             try: 
-                mda_u = mda.Universe(self.pdb_file, dcd)
+                mda_u = mda.Universe(self.pdb_file, xtc)
             except: 
-                logger.info(f"Skipping {dcd}...")
+                logger.info(f"Skipping {xtc}...")
                 continue
 
             sel_atoms = mda_u.select_atoms(atom_sel)  # atom selection to calculate RMSD
             sel_cm = mda_u.select_atoms(cm_sel)
-            for ts in mda_u.trajectory:
+            for ts in mda_u.trajectory:  
                 if map_type == "binary":
                     cm = (distances.self_distance_array(sel_cm.positions) < cm_cutoff) * 1.0
                 elif map_type == "distance":
@@ -125,7 +139,7 @@ class inference_run(ml_base):
                     cm[cm > cm_cutoff] = 50.0                # not interested in extremely long-range interactions
                 cm_list.append(cm)
                 local_entry = {'pdb': os.path.abspath(pdb_file), 
-                            'dcd': os.path.abspath(dcd), 
+                            'xtc': os.path.abspath(xtc), 
                             'frame': ts.frame}
                 if ref_pdb: 
                     rmsd = rms.rmsd(
@@ -156,8 +170,8 @@ class inference_run(ml_base):
         df['embeddings'] = embeddings.tolist()
         outlier_score = lof_score_from_embeddings(embeddings, **kwargs)
         
-#         for i, _ in enumerate(outlier_score):   # in case we want to control the outlierness
-#             outlier_score[i]= outlier_score[i] if outlier_score[i] > -100 else 0
+        for i, _ in enumerate(outlier_score):   # in case we want to control the outlierness
+            outlier_score[i]= outlier_score[i] if outlier_score[i] > -100 else 0
         df['lof_score'] = outlier_score
     
         # SHAP computation
@@ -173,7 +187,7 @@ class inference_run(ml_base):
             #print(f'Model: {self.vae.embedder}')
             #self.vae.embedder.summary()
             print(f'shape of model output: {self.vae.embedder.output.shape}')
-            vae_input = vae_input[::10]   # skip every 10 frames
+            vae_input = vae_input[::100]   # skip every 100 frames; uncomment if you don't wanna consider all frames
             background = vae_input[np.random.choice(len(vae_input), size=200, replace=False)]
             print(f'shape of vae input: {(vae_input).shape}')
             np.save(os.path.join(shap_outdir, f"vae_input.npy"), vae_input)
@@ -293,7 +307,7 @@ class inference_run(ml_base):
                 continue
             else: 
                 len_md_done = \
-                    get_numoflines(md_done[0].replace('dcd', 'log')) - 1
+                    get_numoflines(md_done[0].replace('xtc', 'log')) - 1
             # build the dataframe and rank outliers 
             df = self.build_md_df(**kwargs)
             logger.info(f"Built dataframe from {len(df)} frames. ")
@@ -337,15 +351,15 @@ class inference_run(ml_base):
             # assess simulations 
             sim_running = self.get_md_runs(form='running')
             sim_to_stop = [i for i in sim_running \
-                    if i not in set(df_outliers['dcd'].to_list())]
+                    if i not in set(df_outliers['xtc'].to_list())]
             # only stop simulations that have been running for a while
             # 3/4 done
             sim_to_stop = [i for i in sim_to_stop \
-                    if get_numoflines(i.replace('dcd', 'log')) \
+                    if get_numoflines(i.replace('xtc', 'log')) \
                     > len_md_done * md_threshold]
             for i, sim in enumerate(sim_to_stop): 
                 sim_path = os.path.dirname(sim)
-                sim_run_len = get_numoflines(sim.replace('dcd', 'log'))
+                sim_run_len = get_numoflines(sim.replace('xtc', 'log'))
                 if sim_run_len >= len_md_done: 
                     logger.info(f"{get_dir_base(sim)} finished before inferencing, skipping...")
                     continue
@@ -355,12 +369,12 @@ class inference_run(ml_base):
                 outlier = df_outliers.iloc[i]
                 outlier.to_json(restart_frame)
                 logger.info(f"{get_dir_base(sim)} finished "\
-                    f"{get_numoflines(sim.replace('dcd', 'log'))} "\
+                    f"{get_numoflines(sim.replace('xtc', 'log'))} "\
                     f"of {len_md_done} frames, yet no outlier detected.")
                 logger.info(f"Writing new pdb from frame "\
-                    f"{outlier['frame']} of {get_dir_base(outlier['dcd'])} "\
+                    f"{outlier['frame']} of {get_dir_base(outlier['xtc'])} "\
                     f"to {get_dir_base(sim)}")
-                # write_pdb_frame(, dcd, frame, save_path=None)
+                # write_pdb_frame(, xtc, frame, save_path=None)
 
             logger.info(f"\n=======> Done iteration {iteration} <========\n")
             time.sleep(1)
