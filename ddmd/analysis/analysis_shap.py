@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import pandas as pd
 from tqdm import tqdm
 from sklearn.cluster import MiniBatchKMeans, KMeans
@@ -13,7 +14,12 @@ class analysis_run(inference_run):
     
     def run(self, n_clusters=300, random_state=42, init='k-means++', md_form='done', **kwargs): 
         # base analysis from infer
-        df = self.build_md_df(form=md_form, calc_Q= True, compute_shap=True, shap_batch_size=200, shap_outdir="shap_maps", **kwargs)
+        df_old, xtcs = None, None
+        if os.path.exists("reweighted.pkl"):
+            df_old = pd.read_pickle("reweighted.pkl")
+            xtcs = df_old['xtc'].unique().tolist()
+        df = self.build_md_df(form=md_form, calc_Q= True, compute_shap=False, shap_batch_size=200, 
+                              shap_outdir="shap_maps", xtc_old=xtcs, **kwargs)
         df['sys_label'] = [get_dir_base(i) for i in df['xtc']]
         df['gpu_id'] = [i.split('_')[2] for i in df['sys_label']]
         embeddings = np.array(df['embeddings'].to_list())
@@ -26,6 +32,9 @@ class analysis_run(inference_run):
         df.sort_values(by=['gpu_id', 'sys_label', 'frame'], inplace=True)
         # save df 
         self.df = df
+
+        if not df_old.empty:
+            df = pd.concat([df_old, df], ignore_index=True)
         df.to_pickle("result.pkl")
 
         # reshape dtraj
