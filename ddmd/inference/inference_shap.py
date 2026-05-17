@@ -103,8 +103,10 @@ class inference_run(ml_base):
         else: 
             raise("Form not defined, using all, done or running ...")
 
-    def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', calc_Q=False, compute_shap=False, shap_batch_size=100, shap_outdir="shap_maps", **kwargs): 
-        xtc_files = self.get_md_runs(form=form)
+    def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', calc_Q=False, compute_shap=False, shap_batch_size=100, shap_outdir="shap_maps", xtc_old=None, **kwargs): 
+        xtc_all = self.get_md_runs(form=form)
+        if xtc_old:  # if the DDMD workflow was continued and a df already exists for the older xtcs
+            xtc_files = list(set(xtc_all) - set(xtc_old))
         df_entry = []
         if ref_pdb: 
             ref_u = mda.Universe(ref_pdb)
@@ -187,7 +189,7 @@ class inference_run(ml_base):
             #print(f'Model: {self.vae.embedder}')
             #self.vae.embedder.summary()
             print(f'shape of model output: {self.vae.embedder.output.shape}')
-            vae_input = vae_input[::100]   # skip every 100 frames; uncomment if you don't wanna consider all frames
+            vae_input = vae_input[::200]   # skip every 100 frames; uncomment if you don't wanna consider all frames
             background = vae_input[np.random.choice(len(vae_input), size=200, replace=False)]
             print(f'shape of vae input: {(vae_input).shape}')
             np.save(os.path.join(shap_outdir, f"vae_input.npy"), vae_input)
