@@ -15,8 +15,8 @@ class analysis_run(inference_run):
     def run(self, n_clusters=300, random_state=42, init='k-means++', md_form='done', **kwargs): 
         # base analysis from infer
         df_old, xtcs = None, None
-        if os.path.exists("reweighted.pkl"):
-            df_old = pd.read_pickle("reweighted.pkl")
+        if os.path.exists("result.pkl"):
+            df_old = pd.read_pickle("result.pkl")
             xtcs = df_old['xtc'].unique().tolist()
         df = self.build_md_df(form=md_form, calc_Q= True, compute_shap=False, shap_batch_size=200, 
                               shap_outdir="shap_maps", xtc_old=xtcs, **kwargs)
@@ -33,7 +33,7 @@ class analysis_run(inference_run):
         # save df 
         self.df = df
 
-        if not df_old.empty:
+        if df_old is not None and not df_old.empty:
             df = pd.concat([df_old, df], ignore_index=True)
         df.to_pickle("result.pkl")
 
