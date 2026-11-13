@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from sklearn.cluster import MiniBatchKMeans, KMeans
+import os
+import json
 
 from ddmd.inference import inference_run
 from ddmd.utils import get_dir_base
@@ -11,9 +13,45 @@ class analysis_run(inference_run):
     def __init__(self, pdb_file, md_path, ml_path) -> None:
         super().__init__(pdb_file, md_path, ml_path)
     
-    def run(self, n_clusters=300, random_state=42, init='k-means++', md_form='done', **kwargs): 
+    def run(self, n_clusters=300, random_state=42, init='k-means++', md_form='done', 
+            protein_ligand_system = "No",
+            atom_sel = None,
+            ligand_sel = None,
+            protein_ligand_cutoff = 10.0,
+            **kwargs): 
+        
+        vae_weight = max(self.get_trained_models(), key=os.path.getctime)
+        vae_setup = os.path.join(os.path.dirname(vae_weight), "cvae.json")
+
+        with open(vae_setup, "r") as f:
+            vae_config = json.load(f)
+
+        # ML convention:
+        # atom_sel = protein selection
+        # ligand_sel = ligand selection
+        if atom_sel is None:
+            atom_sel = vae_config.get("atom_sel", None)
+
+        if ligand_sel is None:
+            ligand_sel = vae_config.get("ligand_sel", None)
         # base analysis from infer
-        df = self.build_md_df(form=md_form, calc_Q= True, **kwargs)
+        if ligand_sel is not None:
+            protein_ligand_system = "Yes"
+        else:
+            protein_ligand_system = "No"
+
+        print("DEBUG analysis atom_sel:", atom_sel)
+        print("DEBUG analysis ligand_sel:", ligand_sel)
+        print("DEBUG analysis protein_ligand_system:", protein_ligand_system)
+
+        df = self.build_md_df(form=md_form, calc_Q= False,
+                              protein_ligand_system = protein_ligand_system,
+                              atom_sel = atom_sel,
+                              protein_sel = atom_sel,
+                              ligand_sel = ligand_sel,
+                              protein_ligand_cutoff = protein_ligand_cutoff, 
+                              outlier_selection="com" if protein_ligand_system == "Yes" else None,
+                              **kwargs)
         df['sys_label'] = [get_dir_base(i) for i in df['xtc']]
         df['gpu_id'] = [i.split('_')[2] for i in df['sys_label']]
         embeddings = np.array(df['embeddings'].to_list())
