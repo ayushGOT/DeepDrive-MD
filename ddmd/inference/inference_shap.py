@@ -106,7 +106,13 @@ class inference_run(ml_base):
     def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', calc_Q=False, compute_shap=False, shap_batch_size=100, shap_outdir="shap_maps", xtc_old=None, **kwargs): 
         xtc_all = self.get_md_runs(form=form)
         if xtc_old:  # if the DDMD workflow was continued and a df already exists for the older xtcs
-            xtc_files = list(set(xtc_all) - set(xtc_old))
+            # result.pkl stores absolute paths, so compare on absolute paths
+            xtc_old_abs = {os.path.abspath(x) for x in xtc_old}
+            xtc_files = [x for x in xtc_all if os.path.abspath(x) not in xtc_old_abs]
+            logger.info(f"Skipping {len(xtc_all) - len(xtc_files)} already analyzed trajectories; "
+                        f"{len(xtc_files)} new to process.")
+        else:
+            xtc_files = xtc_all
         df_entry = []
         if ref_pdb: 
             ref_u = mda.Universe(ref_pdb)
