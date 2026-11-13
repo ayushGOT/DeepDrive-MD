@@ -147,9 +147,12 @@ class CVAE(object):
         self.image_size = image_size
         
         # define input layer
+
         if K.image_data_format() == "channels_first":
+            print("Executing if block")
             self.input = Input(shape=(channels, image_size[0], image_size[1]))
         else:
+            print("Executing else block")
             self.input = Input(shape=(image_size[0], image_size[1], channels))
 
         # define convolutional encoding layers
@@ -442,7 +445,7 @@ class CVAE(object):
         return recon
 
     def return_embeddings(
-        self, data: "npt.ArrayLike", batch_size: int = 32
+        self, data: "npt.ArrayLike", batch_size: int = 32, chunk = 100_000
     ) -> "npt.ArrayLike":
         """Return the embeddings for given data.
 
@@ -458,8 +461,9 @@ class CVAE(object):
         npt.ArrayLike
             Array of embeddings for input data.
         """
-        embeddings: "npt.ArrayLike" = self.embedder.predict(data, batch_size=batch_size)
-        return embeddings
+        out = [self.embedder.predict(data[i:i+chunk], batch_size = batch_size)
+               for i in range (0, len(data), chunk)]
+        return np.concatenate(out, axis = 0)
 
     def generate(self, embedding: "npt.ArrayLike") -> "npt.ArrayLike":
         """Return a generated output given a latent embedding.
