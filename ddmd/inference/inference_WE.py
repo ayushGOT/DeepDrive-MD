@@ -7,6 +7,7 @@ import MDAnalysis as mda
 import numpy as np
 import random
 import shutil
+import re
 
 from typing import List
 from MDAnalysis.analysis import rms
@@ -132,10 +133,32 @@ class inference_run(ml_base):
         else: 
             raise("Form not defined, using all, done or running ...")
 
-    def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', calc_Q=False, restrict_LOF=True, **kwargs): 
+    def build_md_df(self, ref_pdb=None, atom_sel="name CA", form='all', calc_Q=False, restrict_LOF=True,
+                    protein_ligand_system = "No", protein_sel = None, ligand_sel = None, protein_ligand_cutoff=10.0,
+                    outlier_selection=None, 
+                    **kwargs): 
         xtc_files = self.get_md_runs(form=form)
         df_entry = []
-        if ref_pdb: 
+
+
+# protein_ligand_system------start
+        protein_ligand_system = str(protein_ligand_system).lower() in ["yes", "true", "1"]
+
+        if protein_ligand_system:
+            if protein_sel is None or ligand_sel is None:
+                raise ValueError(
+                    "protein_sel and ligand_sel both must be provided" \
+                    "in a protein_ligand_system"
+                )
+                
+            logger.info(
+                f"Using protein_ligand system with cutoff "
+                f"{protein_ligand_cutoff}A for bound/unbound check"
+            )
+# protein_ligand_system------end
+
+
+        elif ref_pdb: 
             ref_u = mda.Universe(ref_pdb)
             sel_ref = ref_u.select_atoms(atom_sel)    # atom selection to calculate RMSD
         vae_config = self.get_cvae(dry_run=True)
@@ -160,22 +183,117 @@ class inference_run(ml_base):
 
             sel_atoms = mda_u.select_atoms(atom_sel)  # atom selection to calculate RMSD
             sel_cm = mda_u.select_atoms(cm_sel)
+
+            
+# protein_ligand_system------start
+            if protein_ligand_system:
+                sel_protein = mda_u.select_atoms(protein_sel)
+                sel_ligand = mda_u.select_atoms(ligand_sel)
+
+                if len(sel_protein) == 0:
+                    raise ValueError(f"protein_sel selected 0 atoms: {protein_sel}")
+                if len(sel_ligand) == 0:
+                    raise ValueError(f"ligand_sel selected 0 atoms {ligand_sel}")
+                
+                # COM uses entire protein
+                if outlier_selection == "com":
+                    sel_protein_com = mda_u.select_atoms("protein and name CA")
+
+                    if len(sel_protein_com) == 0:
+                        raise ValueError(
+                            "No protein atoms found for COM calculation."
+                        )
+
+                    # COM requires meaningful atomic masses.
+                    if (
+                        np.any(sel_protein_com.masses <= 0)
+                        or np.any(sel_ligand.masses <= 0)
+                    ):
+                        raise ValueError(
+                            "Missing or invalid atomic masses for COM calculation."
+                        )
+                
             for ts in mda_u.trajectory:
-                if map_type == "binary":
-                    cm = (distances.self_distance_array(sel_cm.positions) < cm_cutoff) * 1.0
-                elif map_type == "distance":
-                    cm = distances.self_distance_array(sel_cm.positions)
-                    cm[cm > cm_cutoff] = 50.0                # not interested in extremely long-range interactions
+                if protein_ligand_system:
+                    pl_distances = distances.distance_array(
+                        sel_protein.positions,
+                        sel_ligand.positions,
+                        box=ts.dimensions
+                    )
+
+                    if map_type == "binary":
+                        cm = (pl_distances < cm_cutoff) * 1.0
+                    
+                    elif map_type == "distance":
+                        cm = pl_distances.copy()
+                        cm[cm> cm_cutoff] = 50.0
+                    
+                    cm = np.asarray(cm, dtype=float)
+# protein_ligand_system------end
+                
+                else:
+                    if map_type == "binary":
+                        cm = (distances.self_distance_array(sel_cm.positions) < cm_cutoff) * 1.0
+
+                    elif map_type == "distance":
+                        cm = distances.self_distance_array(sel_cm.positions)
+                        cm[cm > cm_cutoff] = 50.0                # not interested in extremely long-range interactions
+
                 cm_list.append(cm)
+
                 local_entry = {'pdb': os.path.abspath(pdb_file), 
                             'xtc': os.path.abspath(xtc), 
                             'frame': ts.frame}
+                
                 if ref_pdb: 
                     rmsd = rms.rmsd(
                             sel_atoms.positions, sel_ref.positions, 
                             superposition=True)
                     local_entry['rmsd'] = rmsd
-                
+
+# protein_ligand_system------start
+                if protein_ligand_system:
+                    pl_distances = distances.distance_array(
+                        sel_protein.positions,
+                        sel_ligand.positions,
+                        box = ts.dimensions
+                    )
+
+                    local_entry["protein_ligand_min_distance"] = np.min(pl_distances)
+
+                    local_entry["protein_ligand_n_contacts"] = np.sum(
+                        pl_distances <= protein_ligand_cutoff
+                    )
+                    
+                    local_entry["protein_ligand_unbound"] = (
+                        local_entry["protein_ligand_min_distance"]
+                        > protein_ligand_cutoff
+                    )
+                    # COM portion
+                    if outlier_selection == "com":
+
+                        protein_com = sel_protein_com.center_of_mass(
+                            wrap=False,
+                            unwrap = False
+                        )
+
+                        ligand_com = sel_ligand.center_of_mass(
+                            wrap=False,
+                            unwrap = False
+                        )
+
+                        # Calculate COM distance using minimum-image PBC
+                        com_distance = distances.distance_array(
+                            protein_com[None, :],
+                            ligand_com[None, :],
+                            box=ts.dimensions
+                        )[0, 0]
+
+                        local_entry["protein_ligand_com_distance"] = (
+                            float(com_distance)
+                        )
+ # protein_ligand_system------end               
+
                 ## Calculating and storing Q
                 if calc_Q:
                     r= np.array([])
@@ -187,13 +305,32 @@ class inference_run(ml_base):
                     local_entry['Q'] = Q
                 df_entry.append(local_entry)
                 
-        if map_type == "distance":
-            max_dist = max(max(sublist) for sublist in cm_list)
-            cm_list = [[x / max_dist for x in sublist] for sublist in cm_list]   # normalize all distances to (0,1)
-        
+        # if map_type == "distance":
+        #     max_dist = max(np.max(cm) for cm in cm_list)
+        #     cm_list = [np.asarray(cm, dtype=float) / max_dist for cm in cm_list]  # normalize all distances to (0,1)
+
+
+ # protein_ligand_system------start       
+        if protein_ligand_system:
+            cm_list = np.array(cm_list, dtype=float)
+
+            if map_type == "distance":
+                max_dist = np.max(cm_list)
+                cm_list = cm_list / max_dist
+# protein_ligand_system------end
+
+
+        else:
+            if map_type == "distance":
+                max_dist = max(max(sublist) for sublist in cm_list)
+                cm_list = [[x / max_dist for x in sublist] for sublist in cm_list]   # normalize all distances to (0,1)
+
+
         df = pd.DataFrame(df_entry)
+
         if 'strides' in vae_config: 
             padding = self.get_padding(vae_config['strides'])
+
         vae_input = self.get_vae_input(cm_list, padding=padding)
         embeddings = self.vae.return_embeddings(vae_input)
         df['embeddings'] = embeddings.tolist()
@@ -229,10 +366,44 @@ class inference_run(ml_base):
 
     def ddmd_run(self, WE=True, n_outliers=50, 
             md_threshold=0.75, screen_iter=10, nudge='no', restart_pdb=None, target=None, 
-                 lower_bound=None, upper_bound=None, **kwargs): 
+                lower_bound=None, upper_bound=None, restart_point='any', same_walker_top_n = 5,
+                protein_ligand_system = "No", protein_sel = None, ligand_sel = None, protein_ligand_cutoff = 10.0,
+                outlier_selection=None, **kwargs): 
         
         if WE:
             logger.info(f"Running in weighted ensemble manner.... ")
+
+ 
+            
+        protein_ligand_system = str(protein_ligand_system).lower() in ["yes", "true", "1"]
+
+        # COM
+
+        if protein_ligand_system:
+
+            if outlier_selection is None:
+                outlier_selection = "min_distance"
+
+            outlier_selection = str(outlier_selection).lower()
+
+            if outlier_selection not in ["min_distance", "com"]:
+                raise ValueError(
+                    "outlier_selection must be either "
+                    "'min_distance' or 'com'."
+                )
+
+            logger.info(
+                f"Protein-ligand outlier selection: "
+                f"{outlier_selection}"
+            )
+
+        else:
+            if outlier_selection is not None:
+                raise ValueError(
+                    "outlier_selection can only be specified when "
+                    "protein_ligand_system is Yes."
+                )
+
         iteration = 0
         cycle_dict= {}    # dictionary to save number of sims already setup to stop in a particular cycle
         while True: 
@@ -262,41 +433,196 @@ class inference_run(ml_base):
             n_walkers = len(glob.glob(f"../run_logs/md*"))
             
             # build the dataframe and rank outliers 
-            df = self.build_md_df(**kwargs)
+            df = self.build_md_df(
+                protein_ligand_system = protein_ligand_system,
+                protein_sel = protein_sel,
+                ligand_sel = ligand_sel,
+                protein_ligand_cutoff= protein_ligand_cutoff,
+                outlier_selection=outlier_selection,
+                **kwargs)
+            
             logger.info(f"Built dataframe from {len(df)} frames. ")
+
+            if protein_ligand_system:
+
+                if outlier_selection == "com":
+                    ranking_metric = "protein_ligand_com_distance"
+                else:
+                    ranking_metric = "protein_ligand_min_distance"
+
+            else:
+                ranking_metric = "rmsd"
+
+            logger.info(
+                f"Distance metric for outlier selection: {ranking_metric}"
+            )
+
+            if protein_ligand_system and outlier_selection == "com":
+                logger.info(
+                    f"Protein-ligand COM distance range: "
+                    f"{df[ranking_metric].min():.3f} to "
+                    f"{df[ranking_metric].max():.3f} A"
+                )
+
             if 'ref_pdb' in kwargs:
                 logger.info(f"Lowest RMSD: {min(df['rmsd'])} A, "\
                     f"Highest RMSD: {max(df['rmsd'])} A. " )
+
+# protein_ligand_system------start               
+            if protein_ligand_system:
+                logger.info(
+                    f"Lowest protein-ligand minimum distance: "
+                    f"{df['protein_ligand_min_distance'].min()}A"
+                    f"Highest protein ligand minimum distance: "
+                    f"{df['protein_ligand_min_distance'].max()}A"
+                )
+
+                logger.info(
+                    f"Unbound frames by {protein_ligand_cutoff} A cutoff: "
+                    f"{df['protein_ligand_unbound'].sum()} of {len(df)}."
+                )
             
             if lower_bound and upper_bound:   # to apply restraint on outliers wrt a physical quantity
-                df_outliers = df[(df['rmsd'] >= lower_bound) & (df['rmsd'] <= upper_bound)]
-                logger.info(f"Restricting outlier RMSD within {lower_bound} and {upper_bound} A ...")
+                df_outliers = df[(df[ranking_metric] >= lower_bound) & (df[ranking_metric] <= upper_bound)]
+                logger.info(f"Restricting outlier {ranking_metric} within {lower_bound} and {upper_bound} A ...")
             elif upper_bound:
-                df_outliers = df[(df['rmsd'] <= upper_bound)]
-                logger.info(f"Restricting outlier RMSD < {upper_bound} A ...")
+                df_outliers = df[(df[ranking_metric] <= upper_bound)]
+                logger.info(f"Restricting outlier {ranking_metric} < {upper_bound} A ...")
             elif lower_bound:
-                df_outliers = df[(df['rmsd'] >= lower_bound)]
-                logger.info(f"Restricting outlier RMSD > {lower_bound} A ...")
+                df_outliers = df[(df[ranking_metric] >= lower_bound)]
+                logger.info(f"Restricting outlier {ranking_metric} > {lower_bound} A ...")
             else:
                 df_outliers = df
-
+# protein_ligand_system------end
             if df_outliers.empty:
                 logger.info(f"no frame sampled in the specified RMSD limit. ")
                 continue
 
+# comment start
+            # if len(df_outliers) < n_outliers:
+            #     df_outliers = df_outliers.sort_values('lof_score')
+            # else:
+            #     df_outliers = df_outliers.sort_values('lof_score').head(n_outliers)
+
+            # if 'ref_pdb' in kwargs: 
+            #     if nudge == 'high':     # nudge towards higher RMSD
+            #         df_outliers = df_outliers.sort_values(by='rmsd', ascending=False)
+            #         logger.info("nudging towards higher RMSD")
+            #     if nudge == 'low':      # nudge towards lower RMSD
+            #         df_outliers = df_outliers.sort_values(by='rmsd', ascending=True)
+            #         logger.info("nudging towards lower RMSD")
+
+# comment end
+
+            # restart_point = restart_point.lower()
+
+            # df_restart_pool = df_outliers.copy()
+
+            # if restart_point == "any":
+            #     # Original code ->
+            #     if len(df_outliers) < n_outliers:
+            #         df_outliers = df_outliers.sort_values('lof_score')
+            #     else:
+            #         df_outliers = df_outliers.sort_values('lof_score').head(n_outliers)
+
+            #     if 'ref_pdb' in kwargs: 
+            #         if nudge == 'high':
+            #             df_outliers = df_outliers.sort_values(by='rmsd', ascending=False)
+            #             logger.info("nudging towards higher RMSD")
+            #         if nudge == 'low':
+            #             df_outliers = df_outliers.sort_values(by='rmsd', ascending=True)
+            #             logger.info("nudging towards lower RMSD")
+
+            # elif restart_point == "same":
+            #     # New code -> top outliers
+            #     df_outliers = df_outliers.copy()
+
+            #     parsed = df_outliers["xtc"].apply(parse_md_run_name)
+            #     df_outliers["walker"] = parsed.apply(lambda x: x[0])
+            #     df_outliers["cycle"] = parsed.apply(lambda x: x[1])
+
+            #     df_outliers = df_outliers.sort_values("lof_score")
+
+            #     logger.info(
+            #         f"Same-walker restart mode: selecting top {same_walker_top_n} "
+            #         f"outliers per walker."
+            #     )
+
+            # else:
+            #     raise ValueError(
+            #         f"restart_point must be either 'any' or 'same', but got: {restart_point}"
+            #     )
+
+            
+
+            restart_point = restart_point.lower()
+
+            # --------------------------------------------------
+            # NEW: large pool only for choosing same-walker restart frames
+            # This should NOT control sim_to_stop.
+            # --------------------------------------------------
+            df_restart_pool = df_outliers.copy()
+
+            if restart_point == "same":
+                parsed = df_restart_pool["xtc"].apply(parse_md_run_name)
+                df_restart_pool["walker"] = parsed.apply(lambda x: x[0])
+                df_restart_pool["cycle"] = parsed.apply(lambda x: x[1])
+
+                logger.info(
+                    f"Same-walker restart mode: selecting top {same_walker_top_n} "
+                    f"outliers per walker."
+                )
+
+            elif restart_point != "any":
+                raise ValueError(
+                    f"restart_point must be either 'any' or 'same', but got: {restart_point}"
+                )
+
+            # --------------------------------------------------
+            # ORIGINAL GLOBAL OUTLIER LOGIC
+            # This df_outliers is used for sim_to_stop.
+            # Keep this behavior the same for both any and same.
+            # --------------------------------------------------
             if len(df_outliers) < n_outliers:
                 df_outliers = df_outliers.sort_values('lof_score')
             else:
                 df_outliers = df_outliers.sort_values('lof_score').head(n_outliers)
 
-            if 'ref_pdb' in kwargs: 
-                if nudge == 'high':     # nudge towards higher RMSD
+
+# protein_ligand_system------start
+            if protein_ligand_system:
+                if nudge == "high":
+                    df_outliers = df_outliers.sort_values(
+                        by=ranking_metric,
+                        ascending=False
+                    )
+
+                    logger.info(
+                        f"Nudging towards higher {ranking_metric}"
+                    )
+
+                elif nudge == "low":
+                    df_outliers = df_outliers.sort_values(
+                        by=ranking_metric,
+                        ascending=True
+                    )
+
+                    logger.info(
+                        f"Nudging towards lower {ranking_metric}"
+                    )
+# protein_ligand_system------end
+
+
+            elif 'ref_pdb' in kwargs: 
+                if nudge == 'high':
                     df_outliers = df_outliers.sort_values(by='rmsd', ascending=False)
                     logger.info("nudging towards higher RMSD")
-                if nudge == 'low':      # nudge towards lower RMSD
+                if nudge == 'low':
                     df_outliers = df_outliers.sort_values(by='rmsd', ascending=True)
                     logger.info("nudging towards lower RMSD")
-            
+
+
+
             if iteration % screen_iter == 0:
                 save_df = f"df_outlier_iter_{iteration}.pkl"
                 df_outliers.to_pickle(save_df)
@@ -336,18 +662,131 @@ class inference_run(ml_base):
                     restart_frame = f"{sim_path}/new_pdb"
 #                     if os.path.exists(restart_frame): 
 #                         continue
-                    outlier = df_outliers.iloc[i]
-                    outlier_cycle_number = get_dir_base(outlier['xtc']).split("_")[-2].split("cycle")[-1]
-                    if int(outlier_cycle_number) <= int(cycle_number): # outlier shouldn't be picked from a cycle after the current cycle
+
+# comment start->
+                    # outlier = df_outliers.iloc[i]
+                    # outlier_cycle_number = get_dir_base(outlier['xtc']).split("_")[-2].split("cycle")[-1]
+                    # if int(outlier_cycle_number) <= int(cycle_number): # outlier shouldn't be picked from a cycle after the current cycle
+                    #     outlier.to_json(restart_frame)
+                    #     logger.info(f"{get_dir_base(sim)} finished "\
+                    #         f"{get_numoflines(sim.replace('xtc', 'log'))} "\
+                    #         f"of {len_md_done} frames, yet no outlier detected.")
+                    #     logger.info(f"Writing new pdb from frame "\
+                    #         f"{outlier['frame']} of {get_dir_base(outlier['xtc'])} "\
+                    #         f"to {get_dir_base(sim)}")
+                    # else:
+                    #     logger.info(f"Prevented an outlier from cycle{outlier_cycle_number} to go into cycle{int(cycle_number)+1}")
+# comment end ->
+# replacement start ->
+                    restart_point = restart_point.lower()
+
+                    if restart_point == "any":
+                        # unchanged
+                        outlier = df_outliers.iloc[i]
+
+                        outlier_cycle_number = get_dir_base(outlier['xtc']).split("_")[-2].split("cycle")[-1]
+
+                        if int(outlier_cycle_number) <= int(cycle_number):
+                            outlier.to_json(restart_frame)
+
+                            logger.info(f"{get_dir_base(sim)} finished "
+                                        f"{get_numoflines(sim.replace('xtc', 'log'))} "
+                                        f"of {len_md_done} frames, yet no outlier detected.")
+
+                            logger.info(f"Writing new pdb from frame "
+                                        f"{outlier['frame']} of {get_dir_base(outlier['xtc'])} "
+                                        f"to {get_dir_base(sim)}")
+                        else:
+                            logger.info(
+                                f"Prevented an outlier from cycle{outlier_cycle_number} "
+                                f"to go into cycle{int(cycle_number)+1}"
+                            )
+
+                    elif restart_point == "same":
+                        # Same-walker 
+
+                        current_walker, current_cycle = parse_md_run_name(sim)
+
+                        same_walker_candidates = df_restart_pool[
+                            (df_restart_pool["walker"] == current_walker) &
+                            (df_restart_pool["cycle"] <= current_cycle)
+                        ]
+
+                        if same_walker_candidates.empty:
+                            logger.info(
+                                f"No valid same-walker candidate found for {get_dir_base(sim)}. "
+                                f"Skipping restart for this walker."
+                            )
+                            continue
+
+                        # Top n outliers
+                        same_walker_candidates = (
+                            same_walker_candidates
+                            .sort_values("lof_score")
+                            .head(same_walker_top_n)
+                        )
+
+                        # Nudging
+
+# protein_ligand_system------start
+                        if protein_ligand_system:
+                            if nudge == "high":
+                                same_walker_candidates = (
+                                    same_walker_candidates.sort_values(
+                                        by=ranking_metric,
+                                        ascending=False
+                                    )
+                                )
+
+                                logger.info(
+                                    f"Same-walker mode: nudging {current_walker} "
+                                    f"toward higher {ranking_metric}"
+                                )
+
+                            elif nudge == "low":
+                                same_walker_candidates = (
+                                    same_walker_candidates.sort_values(
+                                        by=ranking_metric,
+                                        ascending=True
+                                    )
+                                )
+
+                                logger.info(
+                                    f"Same-walker mode: nudging {current_walker} "
+                                    f"toward lower {ranking_metric}"
+                                )
+# protein_ligand_system------end                               
+                        elif 'ref_pdb' in kwargs:
+                            if nudge == "high":
+                                same_walker_candidates = same_walker_candidates.sort_values(
+                                    by="rmsd", ascending=False
+                                )
+                                logger.info(
+                                    f"Same-walker mode: nudging {current_walker} toward higher RMSD"
+                                )
+
+                            elif nudge == "low":
+                                same_walker_candidates = same_walker_candidates.sort_values(
+                                    by="rmsd", ascending=True
+                                )
+                                logger.info(
+                                    f"Same-walker mode: nudging {current_walker} toward lower RMSD"
+                                )
+
+                        # Pick the best candidate for this walker
+                        outlier = same_walker_candidates.iloc[0]
+
                         outlier.to_json(restart_frame)
-                        logger.info(f"{get_dir_base(sim)} finished "\
-                            f"{get_numoflines(sim.replace('xtc', 'log'))} "\
-                            f"of {len_md_done} frames, yet no outlier detected.")
-                        logger.info(f"Writing new pdb from frame "\
-                            f"{outlier['frame']} of {get_dir_base(outlier['xtc'])} "\
-                            f"to {get_dir_base(sim)}")
-                    else:
-                        logger.info(f"Prevented an outlier from cycle{outlier_cycle_number} to go into cycle{int(cycle_number)+1}")
+
+                        logger.info(f"{get_dir_base(sim)} finished "
+                                    f"{get_numoflines(sim.replace('xtc', 'log'))} "
+                                    f"of {len_md_done} frames, yet no outlier detected.")
+
+                        logger.info(f"Writing new pdb from frame "
+                                    f"{outlier['frame']} of {get_dir_base(outlier['xtc'])} "
+                                    f"to {get_dir_base(sim)}")
+
+# replacement end ->
                 else: 
                     logger.info(f"saved 1 walker from cycle{cycle_number} from being killed...")
                     touch_file(f"{sim_path}/SAVED")    # not really needed but just for tracking purpose
@@ -366,3 +805,23 @@ def lof_score_from_embeddings(
     return clf.negative_outlier_factor_
 
 
+
+def parse_md_run_name(path_or_file):
+    """
+    Extract walker ID and cycle number from paths like:
+    md_run_1_cycle383_1779984526/output.xtc
+
+    Returns:
+        walker_id: 'md_run_1'
+        cycle_number: 383
+    """
+    run_dir = os.path.basename(os.path.dirname(path_or_file))
+
+    match = re.search(r"(md_run_\d+)_cycle(\d+)", run_dir)
+    if match is None:
+        raise ValueError(f"Could not parse walker/cycle from path: {path_or_file}")
+
+    walker_id = match.group(1)
+    cycle_number = int(match.group(2))
+
+    return walker_id, cycle_number
